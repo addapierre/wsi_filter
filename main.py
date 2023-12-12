@@ -1,0 +1,126 @@
+import cv2
+import sys
+import os
+import argparse
+import numpy as np
+from process_wsi import ImageNDPI
+from display import mouse_CB
+from utils import lum_contrast
+
+parser = argparse.ArgumentParser(
+                    prog='wsiFilter',
+                    description='takes a whole slide image, identifies and isolates each sample on the slide, and performs a colorimetric analysis of each sample',
+                    epilog='Text at the bottom of help')
+
+parser.add_argument(
+    '-c', '--coloration', 
+    dest = 'coloration',
+    default='hes',
+    type=str,
+    )
+parser.add_argument('-f', '--filename',
+                    dest='filename',
+                    type=str)
+# parser.add_argument('-h', '--help', dest='help',
+#                     action='store_true')
+
+def wsi_filter(filename, coloration):
+    Image = ImageNDPI(filename, coloration)
+    cv2.namedWindow('wsi-window', cv2.WINDOW_NORMAL)
+    cv2.setMouseCallback('wsi-window', mouse_CB, Image)
+    while True:
+        cv2.imshow('wsi-window', Image.current_image)
+        if (tt := cv2.waitKey(10) & int(0xFF)) != 255:
+            if tt == ord('q'):
+                sys.exit()
+            if tt == ord('c'):
+                Image.current_image = lum_contrast(Image.current_image)
+            if tt == ord('w'):
+                Image.process_wsi()
+            if tt == ord('x'):
+                if Image.labels is None:
+                    Image.process_wsi()
+                    cv2.imshow('wsi-window', Image.current_image)
+                    cv2.waitKey(10)
+                Image.process_all_labels()
+            if tt == ord('r'):
+                Image.reset()
+            if tt == ord('f'):
+                Image.reset(full_reset=True)
+
+            if tt == ord('i'):
+                if not Image.is_wsi and not Image.is_zoomed:
+                    Image.current_image = Image.original_image
+                elif not Image.is_wsi and Image.is_zoomed:
+                    Image.image_prezoom = Image.original_image
+                    Image.current_image = Image.original_image
+                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+            if tt == ord('p'):
+                if not Image.is_wsi and not Image.is_zoomed:
+                    Image.current_image = Image.purple
+                elif not Image.is_wsi and Image.is_zoomed:
+                    Image.image_prezoom = Image.purple
+                    Image.current_image = Image.purple
+                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+            if tt == ord('o'):
+                if not Image.is_wsi and not Image.is_zoomed:
+                    Image.current_image = Image.orange
+                elif not Image.is_wsi and Image.is_zoomed:
+                    Image.image_prezoom = Image.orange
+                    Image.current_image = Image.orange
+                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+
+            if tt == ord('d'):
+                if Image.labels is None:
+                    Image.process_wsi()
+                    cv2.imshow('wsi-window', Image.current_image)
+                    cv2.waitKey(1)
+                
+                Image.ratios = []
+                Image.areas = []
+                for label in Image.labels:
+                    Image.open_label(label)
+                    area, ratio = Image.process_label(keep_images=False)
+                    Image.ratios.append(ratio)
+                    Image.areas.append(area)
+                    #reinit
+                    Image.reset()
+                    Image.display_label(label)
+                    cv2.imshow('wsi-window', Image.current_image)
+                    cv2.waitKey(1)
+                Image.ratios = np.array(Image.ratios)
+                Image.areas = np.array(Image.areas)
+                full_area = Image.areas.sum()
+                ratio = (Image.ratios*Image.areas/full_area).sum()
+                Image.display_text(str(round(ratio, 2))+"%", 0, Image.current_image.shape[0], font_multiplicator=0.005, thickness_multiplicator=0.004)
+                Image.wsi = Image.current_image.copy()
+
+
+
+
+
+if __name__=="__main__":
+    args = parser.parse_args()
+    #test args
+    coloration = args.coloration.lower()
+    assert coloration in ['hes', 'masson'], f'Error: coloration should be either hes or masson, you entered {coloration}'
+    filename = args.filename.lower()
+    assert os.path.exists(filename), f"Error: file not found at path {filename}"
+    assert filename.split('.')[-1] == 'ndpi', f"Error: file should be a .ndpi file, you entered {filename}"
+
+    # if args.help:
+    #     help = """ help:\n
+    #     q: quit program\n
+    #     w: process whole slide image (remove background and identify samples)\n
+    #     x: process whole slide image and calculate ratio for each sample individually\n
+    #     d: same as x but display label names\n
+    #     c: increase contrast\n
+    #     **click on label to open magnified view**
+    #     o: *label view* select 1st color
+    #     p: *label view* select 2nd color
+    #     i: *label view* view all colors
+    #     """
+    #     print(help)
+    wsi_filter(filename, coloration)
+
+

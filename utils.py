@@ -2,16 +2,19 @@ import numpy as np
 import cv2
 import sys
 
-def filter_blue_white(bgrimg):
+def filter_background(bgrimg, filter_blue = True):
     """returns filtered image and mask astype int"""
     hls = cv2.cvtColor(bgrimg.copy(), cv2.COLOR_BGR2HLS)
-    hsv = cv2.cvtColor(bgrimg.copy(), cv2.COLOR_BGR2HSV)
     h, l, _ = cv2.split(hls)
-    s = hsv[:,:,1]
+
+    s = cv2.cvtColor(bgrimg.copy(), cv2.COLOR_BGR2HSV)[:,:,1]
     
-    test_blue = (h<130) & (h>30) # select blue
-    test_white = np.logical_or(l>220,  s<20) # select white and grey
-    test = np.logical_not(np.logical_or(test_blue, test_white))
+    if filter_blue:
+        test_blue = (h<130) & (h>30) # select blue
+        test_white = np.logical_or(l>220,  s<20) # select white and grey
+        test = np.logical_not(np.logical_or(test_blue, test_white))
+    else:
+        test = np.logical_not(np.logical_or(l>220,  s<20))
 
     hls[:,:,1] = hls[:,:,1]*test
     hls[:,:,2] = hls[:,:,2]*test
@@ -87,17 +90,16 @@ def separate_purple_orange(bgrimg, mask, rotate_wheel = True, keep_images = True
     h = hls[:,:,0]
     #90° rotation of the hue wheel
     if rotate_wheel:
-        h = h-90 # there will be a gap of 75, closing it is too time consuming
+        h = h-90 # there will be a gap of 76, closing it is too time consuming
 
     limit = 84
     if rotate_wheel and limit>90:
-        limit += 75
+        limit += 76
     # mask = 0 on background
     test_orange = np.logical_and((h>limit) , mask) # orange
     orange_ratio = (test_orange.sum() / mask.sum()) * 100
     
     if not keep_images:
-        #color filtering
         return orange_ratio, None, None
 
     im_purple = bgrimg.copy()
@@ -110,6 +112,41 @@ def separate_purple_orange(bgrimg, mask, rotate_wheel = True, keep_images = True
     im_orange = im_orange * test_orange + (test_orange-1)
 
     return  orange_ratio, im_purple, im_orange
+
+
+
+def separate_colors(bgrimg, mask, min1 = 0, max1 = 84, min2 = 85, max2 = 180, rotate_wheel = True, keep_images = True):
+    """separates 2 colors, calculates the ratio of each color area over the whole sample area, returns the images if keep_image = True.\n
+    returns ratio_color1, ratio_color2, img_color1, img_color2
+    """
+    hls = cv2.cvtColor(bgrimg.copy(), cv2.COLOR_BGR2HLS)
+    h = hls[:,:,0]
+    loc0 = np.were(mask)
+    data = h[loc0]
+    #90° rotation of the hue wheel
+    if rotate_wheel:
+        data = data-90 
+        _ = np.where(data>100)
+        data[_] = data[_]-76
+    test_color1 = np.where((data>=min1) & (data<=max1))
+    test_color2 = np.where((data>=min2) & (data<=max2))
+    blob_area = mask.sum()
+    ratio1 = test_color1.sum()/blob_area*100
+    ratio2 = test_color2.sum()/blob_area*100
+
+    if not keep_images:
+        return ratio1, ratio2, None, None
+    
+    img_color1 = bgrimg.copy()
+    img_color2 = bgrimg.copy()
+
+    test_color1 = np.dstack((test_color1,)*3).astype(np.uint8)
+    test_color2 = np.dstack((test_color2,)*3).astype(np.uint8)
+
+    img_color1 = img_color1*test_color1 + (test_color1-1)
+    img_color2 = img_color1*test_color1 + (test_color1-2)
+
+    return ratio1, ratio2, img_color1, img_color2
 
 
 
@@ -127,7 +164,7 @@ if __name__ == "__main__":
                 sys.exit()
 
             if tt == ord('m'):
-                tt, mask = filter_blue_white(im0)
+                tt, mask = filter_background(im0)
                 mask = mask.astype(np.uint8)*255
                 mask = np.dstack((mask,)*3)
                 print( mask.sum())

@@ -6,18 +6,19 @@ import time
 import numpy as np
 import subprocess
 from subprocess import Popen, PIPE, STDOUT
-from utils import filter_blue_white, filter_small_blobs, lum_contrast, filter_small_holes, \
+from utils import filter_background, filter_small_blobs, lum_contrast, filter_small_holes, \
                     separate_purple_orange
 
 from display import DisplayImage, mouse_CB
 
 class ImageNDPI(DisplayImage):
-    def __init__(self, ndpi_path):
+    def __init__(self, ndpi_path, coloration = 'hes'):
 
         assert os.path.exists(ndpi_path), f"ndpi file {ndpi_path} not found"
         assert ndpi_path.split('.')[-1] == 'ndpi', f'{ndpi_path} is not a .ndpi file'
 
         self.ndpi_path = ndpi_path
+        self.coloration = coloration
         self.mag_list = np.array([40, 20, 10, 5, 2.5, 1.25])
         self.mag_max, self.max_resolution = self.get_header_info()
         if self.mag_max == 20:
@@ -43,7 +44,7 @@ class ImageNDPI(DisplayImage):
 
     def process_wsi(self, threshold = 0.1):
         """
-        removes blue, white, small blobs and black blobs, creates a wsi_mask with a value/label per blob
+        removes background, small blobs and black blobs, creates a wsi_mask with a value/label per blob
         Params: 
             - img: RGB image to preprocess
             - threshold: in mm2, blobs smaller than threshold are removed from the image. default: 0.2 mm2
@@ -57,7 +58,10 @@ class ImageNDPI(DisplayImage):
         if threshold is None:
             threshold = self.blob_thresh
 
-        self.current_image, _ = filter_blue_white(self.current_image) 
+        if self.coloration=='masson':
+            self.current_image, _ = filter_background(self.current_image, filter_blue=False) 
+        else:
+            self.current_image, _ = filter_background(self.current_image, filter_blue=True) 
 
         self.wsi_mask = filter_small_blobs(self.current_image.copy(), thresh = threshold, resolution = self.current_resolution)
 
@@ -100,7 +104,7 @@ class ImageNDPI(DisplayImage):
         self.mask = filter_small_holes(self.mask, resolution=self.current_resolution) # mask = 0 on background and 1 on blob
         mask_3ch = np.dstack((self.mask,)*3)
         self.current_image = self.current_image * mask_3ch + (mask_3ch-1)
-        self.current_image, self.mask = filter_blue_white(self.current_image)
+        self.current_image, self.mask = filter_background(self.current_image, filter_blue=(self.coloration=='hes'))
         self.current_image = self.current_image + np.dstack((self.mask-1,)*3) #replace 0 with 255
 
     def process_label(self, keep_images = True):
@@ -228,6 +232,7 @@ class ImageNDPI(DisplayImage):
         else:
             mag = str(round(mag,2))
         cmd = ['ndpisplit', f'-x{mag}' ,f'-e{xmin},{ymin},{xmax-xmin},{ymax-ymin}', self.ndpi_path]
+        print(cmd)
         subprocess.call(cmd)
         path = self.ndpi_path.replace('.ndpi', f'_x{mag}_z0_1.tif')
         im = cv2.imread(path) 

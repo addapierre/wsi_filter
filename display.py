@@ -83,7 +83,6 @@ class DisplayImage():
 def mouse_CB(event, x, y, flags, param):
     """opencv mouse callback"""
 
-
     if param.zoom_triggered:
         if event == cv2.EVENT_LBUTTONUP:
             param.zoom(x,y)
@@ -96,7 +95,7 @@ def mouse_CB(event, x, y, flags, param):
 
     else:
 
-        if event == cv2.EVENT_MOUSEMOVE and param.labels is not None and param.is_wsi:
+        if (event == cv2.EVENT_MOUSEMOVE) and (param.labels is not None) and (param.is_wsi):
             label = param.wsi_mask[y,x]
             if label != 0 and not param.ratio_displayed:
                 param.display_ratio(label)
