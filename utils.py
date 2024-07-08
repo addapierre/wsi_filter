@@ -37,7 +37,7 @@ def filter_small_holes(mask, resolution, thresh = 0.004):
         return mask
 
 
-def filter_small_blobs(bgrimg, resolution, thresh = 0.1 ):
+def filter_small_blobs(bgrimg, resolution, coloration = 'hes', thresh = 0.1 ):
     """
     filter out blobs with an area smaller than the threshold.
     threshold in mm2
@@ -45,16 +45,22 @@ def filter_small_blobs(bgrimg, resolution, thresh = 0.1 ):
     """
     hls = cv2.cvtColor(bgrimg, cv2.COLOR_BGR2HLS)
     _, l, s = cv2.split(hls)
-    nb_pixels = thresh * resolution[0] * resolution[1]
+    nb_pixels = (thresh * resolution[0] * resolution[1])
     _, CC_mask, stats, _ = cv2.connectedComponentsWithStats(s, connectivity=8)
-    sizes = stats[1:,4]
-    index = (np.where(sizes > nb_pixels)[0]+1).astype(np.int32)
+    sizes = stats[1:,4]                                                         # we ignore the first label, which is the background
+    index = (np.where(sizes > nb_pixels)[0]+1).astype(np.int32)                 # +1 because we did stats [1:,4]
     _ = np.isin(CC_mask, index)
     loc0 = np.where(_)
     
     mask_index = CC_mask[loc0]
+    # hackey optimization
     sizes = sizes[index-1] # sizes corresponds to the start value of each label in the following argsort
     sorted_index = np.argsort(mask_index)
+
+    if coloration == "hes":
+        l_lim = 100
+    else:
+        l_lim = 20
 
     mask = np.zeros(CC_mask.shape)
     j = 1
@@ -66,8 +72,8 @@ def filter_small_blobs(bgrimg, resolution, thresh = 0.1 ):
         lmean = l[loc].mean()
         smean = s[loc].mean()
 
-        if lmean>100: 
-            if smean>20: 
+        if lmean > l_lim: # previously 100, doesn't work with masson dark blue
+            if smean > 20: 
                 if np.mean((s-smean)**2)>10: #faster way to get s std
                     mask[loc] = j
                     j+=1
@@ -114,14 +120,13 @@ def separate_purple_orange(bgrimg, mask, rotate_wheel = True, keep_images = True
     return  orange_ratio, im_purple, im_orange
 
 
-
 def separate_colors(bgrimg, mask, min1 = 0, max1 = 84, min2 = 85, max2 = 180, rotate_wheel = True, keep_images = True):
     """separates 2 colors, calculates the ratio of each color area over the whole sample area, returns the images if keep_image = True.\n
     returns ratio_color1, ratio_color2, img_color1, img_color2
     """
     hls = cv2.cvtColor(bgrimg.copy(), cv2.COLOR_BGR2HLS)
     h = hls[:,:,0]
-    loc0 = np.were(mask)
+    loc0 = np.where(mask)
     data = h[loc0]
     #90° rotation of the hue wheel
     if rotate_wheel:
@@ -131,8 +136,8 @@ def separate_colors(bgrimg, mask, min1 = 0, max1 = 84, min2 = 85, max2 = 180, ro
     test_color1 = np.where((data>=min1) & (data<=max1))
     test_color2 = np.where((data>=min2) & (data<=max2))
     blob_area = mask.sum()
-    ratio1 = test_color1.sum()/blob_area*100
-    ratio2 = test_color2.sum()/blob_area*100
+    ratio1 = test_color1[0].shape[0]/blob_area*100
+    ratio2 = test_color2[0].shape[0]/blob_area*100
 
     if not keep_images:
         return ratio1, ratio2, None, None
@@ -140,11 +145,15 @@ def separate_colors(bgrimg, mask, min1 = 0, max1 = 84, min2 = 85, max2 = 180, ro
     img_color1 = bgrimg.copy()
     img_color2 = bgrimg.copy()
 
-    test_color1 = np.dstack((test_color1,)*3).astype(np.uint8)
-    test_color2 = np.dstack((test_color2,)*3).astype(np.uint8)
+    # test_color1 = np.dstack((test_color1,)*3).astype(np.uint8)
+    # test_color2 = np.dstack((test_color2,)*3).astype(np.uint8)
 
-    img_color1 = img_color1*test_color1 + (test_color1-1)
-    img_color2 = img_color1*test_color1 + (test_color1-2)
+    # img_color1 = img_color1*test_color1 + (test_color1-1)
+    # img_color2 = img_color1*test_color1 + (test_color1-2)
+    loc1 = (loc0[0][test_color1], loc0[1][test_color1])
+    loc2 = (loc0[0][test_color2], loc0[1][test_color2])
+    img_color1[loc1] = 255
+    img_color2[loc2] = 255
 
     return ratio1, ratio2, img_color1, img_color2
 

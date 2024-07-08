@@ -31,13 +31,16 @@ def wsi_filter(filename, coloration):
     while True:
         cv2.imshow('wsi-window', Image.current_image)
         if (tt := cv2.waitKey(10) & int(0xFF)) != 255:
+            """Q, C, W, X, R, F, I, O, P, D, A, Z"""
             if tt == ord('q'):
                 sys.exit()
             if tt == ord('c'):
                 Image.current_image = lum_contrast(Image.current_image)
             if tt == ord('w'):
+                # process wsi
                 Image.process_wsi()
             if tt == ord('x'):
+                # process wsi and all labels, displays ratio
                 if Image.labels is None:
                     Image.process_wsi()
                     cv2.imshow('wsi-window', Image.current_image)
@@ -48,29 +51,59 @@ def wsi_filter(filename, coloration):
             if tt == ord('f'):
                 Image.reset(full_reset=True)
 
+            if tt == ord('a'):
+                Image.change_limit(increment=False)
+                if not Image.is_wsi:
+                    if not Image.is_zoomed:
+                        Image.current_image = Image.original_image.copy()
+                        Image.process_label(keep_images = True)
+                    if Image.is_zoomed:
+                        Image.image_prezoom = Image.original_image.copy()
+                        Image.current_image = Image.original_image.copy()
+                        Image.process_label(keep_images = True)
+                        Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+            if tt == ord('z'):
+                Image.change_limit(increment=True)
+                if not Image.is_wsi:
+                    if not Image.is_zoomed:
+                        Image.current_image = Image.original_image
+                        Image.process_label(keep_images = True)
+                    if Image.is_zoomed:
+                        Image.image_prezoom = Image.original_image
+                        Image.current_image = Image.original_image
+                        Image.process_label(keep_images = True)
+                        Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+
+            if tt == ord('z'):
+                Image.change_limit(increment=True)
+
             if tt == ord('i'):
+                # if img is a label and one color is selected, return to original image
                 if not Image.is_wsi and not Image.is_zoomed:
                     Image.current_image = Image.original_image
                 elif not Image.is_wsi and Image.is_zoomed:
                     Image.image_prezoom = Image.original_image
                     Image.current_image = Image.original_image
                     Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
-            if tt == ord('p'):
-                if not Image.is_wsi and not Image.is_zoomed:
-                    Image.current_image = Image.purple
-                elif not Image.is_wsi and Image.is_zoomed:
-                    Image.image_prezoom = Image.purple
-                    Image.current_image = Image.purple
-                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
             if tt == ord('o'):
+                # if img is a label, keep only on of the 2 colors
                 if not Image.is_wsi and not Image.is_zoomed:
-                    Image.current_image = Image.orange
+                    Image.current_image = Image.im_color1.copy()
                 elif not Image.is_wsi and Image.is_zoomed:
-                    Image.image_prezoom = Image.orange
-                    Image.current_image = Image.orange
+                    Image.image_prezoom = Image.im_color1.copy()
+                    Image.current_image = Image.im_color1.copy()
+                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+            if tt == ord('p'):
+                # if img is a label, keep only on of the 2 colors
+                if not Image.is_wsi and not Image.is_zoomed:
+                    Image.current_image = Image.im_color2.copy()
+                elif not Image.is_wsi and Image.is_zoomed:
+                    Image.image_prezoom = Image.im_color2.copy()
+                    Image.current_image = Image.im_color2.copy()
                     Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
 
-            if tt == ord('d'):
+            if tt == ord('d'): 
+                #process wsi and then each label, but diplays labels as they're being processed
                 if Image.labels is None:
                     Image.process_wsi()
                     cv2.imshow('wsi-window', Image.current_image)
@@ -79,7 +112,7 @@ def wsi_filter(filename, coloration):
                 Image.ratios = []
                 Image.areas = []
                 for label in Image.labels:
-                    Image.open_label(label)
+                    Image.open_label(label, mag = 10)
                     area, ratio = Image.process_label(keep_images=False)
                     Image.ratios.append(ratio)
                     Image.areas.append(area)
@@ -94,6 +127,8 @@ def wsi_filter(filename, coloration):
                 ratio = (Image.ratios*Image.areas/full_area).sum()
                 Image.display_text(str(round(ratio, 2))+"%", 0, Image.current_image.shape[0], font_multiplicator=0.005, thickness_multiplicator=0.004)
                 Image.wsi = Image.current_image.copy()
+
+            
 
 
 

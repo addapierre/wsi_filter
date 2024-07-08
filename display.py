@@ -62,7 +62,7 @@ class DisplayImage():
         # except: 
         #     self.cancel_zoom()
 
-    def display_text(self, text, x, y, color = (255,0,0), font_multiplicator = 1e-3, thickness_multiplicator = 1e-3, background_color = None):
+    def display_text(self, text, x, y, color = (100,255,100), font_multiplicator = 1e-3, thickness_multiplicator = 1e-3, background_color = None):
         # Warning: this function changes self.current_image, make sure you made a copy before calling it
         font_scale = min(self.width, self.height) * font_multiplicator
         font_thickness = int(np.ceil(min(self.width, self.height) * thickness_multiplicator))
@@ -73,7 +73,7 @@ class DisplayImage():
         if y - text_h < 0:
             y = y+text_h
         if isinstance(background_color, tuple):
-            cv2.rectangle(self.current_image, (x, y-text_h-np.ceil(text_h/5).astype(int)), (x+text_w, y), background_color, -1)
+            cv2.rectangle(self.current_image, (x, y-text_h-np.ceil(text_h/5).astype(int)), (x+text_w, y+np.ceil(text_h/5).astype(int)), background_color, -1)
 
         cv2.putText(self.current_image, text, (x, y), cv2.FONT_HERSHEY_DUPLEX,\
                     fontScale = font_scale, color = color, thickness = font_thickness, lineType = cv2.LINE_AA)
@@ -125,7 +125,7 @@ def mouse_CB(event, x, y, flags, param):
 
             if param.is_zoomed:
                 param.cancel_zoom()
-            elif param.is_wsi:
+            elif param.is_wsi and param.labels is not None:
                 if param.ratio_displayed:
                     param.ratio_displayed = False
                 label = param.wsi_mask[y,x]
