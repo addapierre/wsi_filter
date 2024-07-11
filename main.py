@@ -3,7 +3,7 @@ import sys
 import os
 import argparse
 import numpy as np
-from process_wsi import ImageNDPI
+from process_wsi import ImageWSI
 from display import mouse_CB
 from utils import lum_contrast
 
@@ -25,9 +25,9 @@ parser.add_argument('-f', '--filename',
 #                     action='store_true')
 
 def wsi_filter(filename, coloration):
-    Image = ImageNDPI(filename, coloration)
+    Image = ImageWSI(filename, coloration)
     cv2.namedWindow('wsi-window', cv2.WINDOW_NORMAL)
-    cv2.setMouseCallback('wsi-window', mouse_CB, Image)
+    cv2.setMouseCallback('wsi-window', mouse_CB, Image) 
     while True:
         cv2.imshow('wsi-window', Image.current_image)
         if (tt := cv2.waitKey(10) & int(0xFF)) != 255:

@@ -81,16 +81,20 @@ class DisplayImage():
 
         
 def mouse_CB(event, x, y, flags, param):
-    """opencv mouse callback"""
+    """
+    opencv mouse callback function
+    handles zoom, ratio display when hovering over a sample, zooming on a sample
+    """
 
-    if param.zoom_triggered:
+    # not zoomed yet but in the process of choosing the area
+    if param.zoom_triggered: 
         if event == cv2.EVENT_LBUTTONUP:
             param.zoom(x,y)
 
         elif event == cv2.EVENT_MOUSEMOVE:
             if flags == 17: #shift pressed down
                 param.zoom_rectangle(x,y)
-            else:
+            else: #shift released before
                 param.cancel_zoom()
 
     else:
