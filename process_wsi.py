@@ -116,6 +116,9 @@ class ImageWSI(DisplayImage):
         self.current_image = np.array(self.slide.read_region((xmin_l0,ymin_l0), target_level, (width, height)))[:,:,:3]
         self.current_image = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2BGR)
 
+        #new current resolution in pix/mm2
+        self.current_resolution = (self.current_resolution[0]*resolution_ratio[0], self.current_resolution[1]*resolution_ratio[1])
+
         # mask label img with cropped wsi mask
         self.mask = self.wsi_mask[ymin:ymax, xmin:xmax].copy()
         test = self.mask!=label
@@ -138,7 +141,9 @@ class ImageWSI(DisplayImage):
         """returns the blob's area in mm2 and the ratio of fibrosis orange/(orange+purple). 
         can create separated self.im_color1 and self.im_color2 image if keep_image = True"""
         nb_pixel = self.mask.sum()
+        
         pix_area = 1/(self.current_resolution[0]*self.current_resolution[1]) #mm2/pix
+        
         area = nb_pixel*pix_area
 
         if img is None:
