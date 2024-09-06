@@ -1,11 +1,7 @@
 import os
 import sys
 import cv2
-import re
-import time
 import numpy as np
-import subprocess
-from subprocess import Popen, PIPE, STDOUT
 import openslide
 from utils import filter_background, filter_small_blobs, lum_contrast, filter_small_holes, \
                     separate_colors
@@ -26,15 +22,15 @@ class ImageWSI(DisplayImage):
         self.wsi_path = wsi_path
         self.coloration = coloration
         if self.coloration == 'hes':
-            self.hue_limit_min = 90
-            self.hue_limit_max = 174
+            self.hue_limit_min = 174
+            self.hue_limit_max = 210
         elif self.coloration == 'masson':
             self.hue_limit_min = 100
             self.hue_limit_max = 132
         else:
             raise Exception(f"invalid coloration, enter 'hes' or 'masson'. you entered {coloration}") 
         
-        self.slide = openslide.OpenSlide('data/HES/19AA00560/19AA00560_01_HES.ndpi')
+        self.slide = openslide.OpenSlide(wsi_path)
         self.level_count = self.slide.level_count
         self.dimensions = np.array(self.slide.level_dimensions)
         self.level_dimensions = np.array(self.slide.level_dimensions)
@@ -51,8 +47,10 @@ class ImageWSI(DisplayImage):
         self.current_resolution = (1 / (self.mmp_x_l0 * self.level_downsample[-wsi_level]), 1 / (self.mmp_y_l0 * self.level_downsample[-wsi_level])) #resolution in pix/mm
         self.wsi_resolution = self.current_resolution
         super().__init__(self.raw_wsi.copy()) # self.current_image is wsi, raw_wsi remains unchanged
+        self.wheel_window_init()
 
         #init values
+        self.color = "both"
         self.is_wsi = True
         self.labels = None
         self.label = None
@@ -144,21 +142,25 @@ class ImageWSI(DisplayImage):
         area = nb_pixel*pix_area
 
         if img is None:
-            img = self.current_image
+            if self.color == "both":
+                img = self.current_image
+            else:
+                img = self.original_image
         
         ratio1, ratio2, self.im_color1, self.im_color2 = \
             separate_colors(img, self.mask, min_hue = self.hue_limit_min, max_hue = self.hue_limit_max, keep_images=keep_images)
-        ratio = ratio2
+        ratio = ratio1
 
         if keep_images:
             self.original_image = img
-            # display ratio on lower left corner of the image (CHANGE TO BE DISPLAYED ON A NEW WINDOW)
-            #self.display_text(str(round(ratio, 2))+"%", 0, self.current_image.shape[0], font_multiplicator=0.005, thickness_multiplicator=0.008)
 
         return area, ratio
 
     def change_limit(self, lower_bound :bool, increment : bool):
-
+        """change color bound for color separation. 
+        makes sure bounds are not equal, that they are between 0 and 179, and that min an max bounds don't switch.
+        """
+        self.update_wheel(mean_fibrosis=-1)
         if lower_bound:
             if increment:
                 self.hue_limit_min += 1
@@ -168,6 +170,7 @@ class ImageWSI(DisplayImage):
                 self.hue_limit_min -= 1
                 if self.hue_limit_min == self.hue_limit_max:
                     self.hue_limit_min -= 1
+        else:
             if increment:
                 self.hue_limit_max += 1
                 if self.hue_limit_min == self.hue_limit_max:
@@ -177,10 +180,37 @@ class ImageWSI(DisplayImage):
                 if self.hue_limit_min == self.hue_limit_max:
                     self.hue_limit_max -= 1
 
+        if self.hue_limit_min < 0:
+            self.hue_limit_min, self.hue_limit_max = self.hue_limit_max, self.hue_limit_min
+        
+        if not self.is_wsi:
+            self.display_blob(self.current_label)
+            if self.color == "color_1":
+                
+                if self.is_zoomed:
+                    self.image_prezoom = self.im_color1.copy()
+                    self.current_image = self.im_color1.copy()
+                    self.zoom(self.x_final_zoom, self.y_final_zoom)
+                else:
+                    self.current_image = self.im_color1.copy()
+            if self.color == "color_2":
+                if self.is_zoomed:
+                    self.image_prezoom = self.im_color2.copy()
+                    self.current_image = self.im_color2.copy()
+                    self.zoom(self.x_final_zoom, self.y_final_zoom)
+                else:
+                    self.current_image = self.im_color2.copy()
+
+        self.update_wheel()
+
+
     def display_blob(self, label):
+        self.current_label = label
         self.open_label(label)
         self.is_wsi = 0
         area, ratio = self.process_label(keep_images=True)
+        self.update_wheel(sample_fibrosis=ratio)
+
 
     def process_all_labels(self):
         if self.labels is None:
@@ -198,9 +228,11 @@ class ImageWSI(DisplayImage):
         self.ratios = np.array(self.ratios)
         self.areas = np.array(self.areas)
         full_area = self.areas.sum()
-        ratio = (self.ratios*self.areas/full_area).sum()
+        self.mean_ratio = (self.ratios*self.areas/full_area).sum()
+        self.update_wheel(mean_fibrosis = self.mean_ratio)
+        
         # display ratio on lower left corner of the image (CHANGE TO BE DISPLAYED ON A NEW WINDOW)
-        self.display_text(str(round(ratio, 2))+"%", 0, self.current_image.shape[0], font_multiplicator=0.005, thickness_multiplicator=0.004)
+        #self.display_text(str(round(self.mean_ratio, 2))+"%", 0, self.current_image.shape[0], font_multiplicator=0.005, thickness_multiplicator=0.004)
         self.wsi = self.current_image.copy()
 
     # writing the label on each blob is too slow, as it requires generating a new wsi image for each blob (that's how cv2.putText works)
@@ -222,6 +254,7 @@ class ImageWSI(DisplayImage):
     #     self.display_text(text=str(label), x=x, y=y, background_color= (100,100,100))
     #     self.wsi = self.current_image.copy()
 
+
     def display_ratio(self, label):
         """
         When the arrow hovers over the blob, display its ratio and area next to it.
@@ -238,12 +271,15 @@ class ImageWSI(DisplayImage):
         self.display_text(text, xmax, ymin, background_color=(200,200,200))
         self.ratio_displayed = True
 
+
     def reset(self, full_reset = False):
         if full_reset:
             self.current_image = self.raw_wsi.copy()
             
         else:
             self.current_image = self.wsi.copy()
+        
+        self.color = "both"
         self.mask = self.wsi_mask 
         self.current_resolution = self.wsi_resolution
         self.is_wsi = 1
@@ -251,6 +287,73 @@ class ImageWSI(DisplayImage):
         self.zoom_triggered = 0
         self.ratio_displayed = False
         self.label = None
+
+
+    def wheel_window_init(self):
+        """generates an image with the color wheel and the fibrosis %. to be displayed in another window"""
+        wheel = cv2.imread('images/wheel.png')
+        margin = 30
+        wheel_size = wheel.shape[0]
+        self.wheel_size = wheel_size
+        self.wheel_window = np.ones((int(wheel_size*2.1), wheel_size+2*margin, 3), dtype = np.uint8)*255
+        self.wheel_window[margin:wheel_size+margin, margin:wheel_size+margin, :] = wheel.copy()
+        width = self.wheel_window.shape[1]
+
+        cv2.ellipse(self.wheel_window, (wheel_size//2+margin,)*2, (210,)*2, -90, (self.hue_limit_min)*2, (self.hue_limit_max)*2, (0,)*3, 15)
+
+        cv2.putText(self.wheel_window, str(self.hue_limit_min%180), (290, wheel_size//2-10), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+        cv2.putText(self.wheel_window, str(self.hue_limit_max%180), (290, wheel_size//2+90), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+
+        cv2.putText(self.wheel_window, '-', (220, wheel_size//2-10), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+        cv2.putText(self.wheel_window, '+', (430, wheel_size//2-10), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+        cv2.putText(self.wheel_window, '-', (220, wheel_size//2+90), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+        cv2.putText(self.wheel_window, '+', (430, wheel_size//2+90), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+
+        font = 3
+        div1 = wheel_size+2*margin+30
+        cv2.line(self.wheel_window, (0, div1), (width, div1), (0,0,0), 2)
+        cv2.line(self.wheel_window, (0, div1+10), (width, div1+10), (0,0,0), 2)
+
+        cv2.putText(self.wheel_window, "MEAN FIBROSIS:", (2*margin, div1 + 120),fontFace = font, fontScale= 2, color = (0,0,0), thickness = 2)
+        cv2.putText(self.wheel_window, "--- %", ((width)//3, div1 + 230), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+        
+
+        div2 = div1 + 330
+        cv2.line(self.wheel_window, (0, div2), (width, div2), (0,0,0), 2)
+        cv2.line(self.wheel_window, (0, div2+10), (width, div2+10), (0,0,0), 2)
+
+        cv2.putText(self.wheel_window, "SAMPLE FIBROSIS:", (2*margin, div2 + 120),fontFace = font, fontScale= 2, color = (0,0,0), thickness = 2)
+        cv2.putText(self.wheel_window, "--- %", ((width)//3, div2 + 230), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+
+
+    def update_wheel(self, mean_fibrosis = None, sample_fibrosis = None):
+
+        margin = 30
+        width = self.wheel_window.shape[1]
+        div1 = self.wheel_size+90
+
+        if mean_fibrosis is not None:
+            cv2.rectangle(self.wheel_window, (0,div1 + 130), (width, div1+300), (255,)*3, -1)
+            if mean_fibrosis == -1:
+                cv2.putText(self.wheel_window, "--- %", ((width)//3, div1 + 230), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+            else:
+                cv2.putText(self.wheel_window, f"{mean_fibrosis:.2f} %", ((width)//3, div1 + 230), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+
+        if sample_fibrosis is not None:
+            div2 = div1 + 330
+            cv2.rectangle(self.wheel_window, (0,div2 + 130), (width, div2+300), (255,)*3, -1)
+            if sample_fibrosis == -1:
+                cv2.putText(self.wheel_window, "--- %", ((width)//3, div2 + 230), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+            else:
+                cv2.putText(self.wheel_window, f"{sample_fibrosis:.2f} %", ((width)//3, div2 + 230), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+
+        else: # update wheel
+            cv2.ellipse(self.wheel_window, (self.wheel_size//2+margin,)*2, (210,)*2, 0, 0, 370, (255,)*3, 17)
+            cv2.ellipse(self.wheel_window, (self.wheel_size//2+margin,)*2, (210,)*2, -90, (self.hue_limit_min)*2, (self.hue_limit_max)*2, (0,)*3, 15)
+            
+            cv2.rectangle(self.wheel_window, (280, self.wheel_size//3), (420, self.wheel_size-130), (255,)*3, -1)
+            cv2.putText(self.wheel_window, str(self.hue_limit_min%180), (290, self.wheel_size//2-10), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
+            cv2.putText(self.wheel_window, str(self.hue_limit_max%180), (290, self.wheel_size//2+90), fontFace = 2, fontScale= 2, color = (20,20,20), thickness = 4)
 
 
 
