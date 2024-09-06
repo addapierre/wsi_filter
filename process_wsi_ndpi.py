@@ -105,7 +105,7 @@ class ImageNDPI(DisplayImage):
         self.mask = self.wsi_mask[ymin:ymax, xmin:xmax].copy()
         test = self.mask!=label
         self.mask[test] = 0
-        self.mask[~test] = 1
+        
         self.mask = cv2.resize(self.mask, (self.current_image.shape[1], self.current_image.shape[0]))
 
         #complete mask

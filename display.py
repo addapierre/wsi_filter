@@ -81,16 +81,20 @@ class DisplayImage():
 
         
 def mouse_CB(event, x, y, flags, param):
-    """opencv mouse callback"""
+    """
+    opencv mouse callback function
+    handles zoom, ratio display when hovering over a sample, zooming on a sample
+    """
 
-    if param.zoom_triggered:
+    # not zoomed yet but in the process of choosing the area
+    if param.zoom_triggered: 
         if event == cv2.EVENT_LBUTTONUP:
             param.zoom(x,y)
 
         elif event == cv2.EVENT_MOUSEMOVE:
             if flags == 17: #shift pressed down
                 param.zoom_rectangle(x,y)
-            else:
+            else: #shift released before
                 param.cancel_zoom()
 
     else:
@@ -130,6 +134,32 @@ def mouse_CB(event, x, y, flags, param):
                     param.ratio_displayed = False
                 label = param.wsi_mask[y,x]
                 param.display_blob(label)
+
+def color_wheel_CB(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        has_changed = 0
+        if 200 < x < 290 and 255 < y < 345:
+            # decrease lower bound 
+            param.change_limit(lower_bound = True, increment = False)
+            has_changed = 1
+
+        elif 420 < x < 510 and 255 < y < 345:
+            # increase lower bound 
+            param.change_limit(lower_bound = True, increment = True)
+            has_changed = 1
+        
+        elif 200 < x < 290 and 355 < y < 445:
+            # decrease upper bound 
+            param.change_limit(lower_bound = False, increment = False)
+            has_changed = 1
+        
+        elif 420 < x < 510 and 355 < y < 445:
+            # increase upper bound 
+            param.change_limit(lower_bound = False, increment = True)
+            has_changed = 1
+        if has_changed == 1:
+            pass
+
 
 
 if __name__ == "__main__":

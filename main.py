@@ -3,8 +3,8 @@ import sys
 import os
 import argparse
 import numpy as np
-from process_wsi import ImageNDPI
-from display import mouse_CB
+from process_wsi import ImageWSI
+from display import mouse_CB, color_wheel_CB
 from utils import lum_contrast
 
 parser = argparse.ArgumentParser(
@@ -25,11 +25,16 @@ parser.add_argument('-f', '--filename',
 #                     action='store_true')
 
 def wsi_filter(filename, coloration):
-    Image = ImageNDPI(filename, coloration)
+    Image = ImageWSI(filename, coloration)
     cv2.namedWindow('wsi-window', cv2.WINDOW_NORMAL)
     cv2.setMouseCallback('wsi-window', mouse_CB, Image)
+
+    cv2.namedWindow('wheel-window', cv2.WINDOW_NORMAL)
+    cv2.setMouseCallback('wheel-window', color_wheel_CB, Image)
+    
     while True:
         cv2.imshow('wsi-window', Image.current_image)
+        cv2.imshow('wheel-window', Image.wheel_window) 
         if (tt := cv2.waitKey(10) & int(0xFF)) != 255:
             """Q, C, W, X, R, F, I, O, P, D, A, Z"""
             if tt == ord('q'):
@@ -48,8 +53,10 @@ def wsi_filter(filename, coloration):
                 Image.process_all_labels()
             if tt == ord('r'):
                 Image.reset()
+                Image.update_wheel(sample_fibrosis=-1)
             if tt == ord('f'):
                 Image.reset(full_reset=True)
+                Image.update_wheel(sample_fibrosis=-1)
 
             if tt == ord('a'):
                 Image.change_limit(increment=False)
@@ -79,6 +86,7 @@ def wsi_filter(filename, coloration):
 
             if tt == ord('i'):
                 # if img is a label and one color is selected, return to original image
+                Image.color = "both" 
                 if not Image.is_wsi and not Image.is_zoomed:
                     Image.current_image = Image.original_image
                 elif not Image.is_wsi and Image.is_zoomed:
@@ -87,20 +95,25 @@ def wsi_filter(filename, coloration):
                     Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
             if tt == ord('o'):
                 # if img is a label, keep only on of the 2 colors
-                if not Image.is_wsi and not Image.is_zoomed:
-                    Image.current_image = Image.im_color1.copy()
-                elif not Image.is_wsi and Image.is_zoomed:
-                    Image.image_prezoom = Image.im_color1.copy()
-                    Image.current_image = Image.im_color1.copy()
-                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+                
+                if not Image.is_wsi:
+                    Image.color = "color_1" 
+                    if not Image.is_zoomed:
+                        Image.current_image = Image.im_color1.copy()
+                    else:  # image is zoomed
+                        Image.image_prezoom = Image.im_color1.copy()
+                        Image.current_image = Image.im_color1.copy()
+                        Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
             if tt == ord('p'):
                 # if img is a label, keep only on of the 2 colors
-                if not Image.is_wsi and not Image.is_zoomed:
-                    Image.current_image = Image.im_color2.copy()
-                elif not Image.is_wsi and Image.is_zoomed:
-                    Image.image_prezoom = Image.im_color2.copy()
-                    Image.current_image = Image.im_color2.copy()
-                    Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
+                if not Image.is_wsi:
+                    Image.color = "color_2" 
+                    if not Image.is_zoomed:
+                        Image.current_image = Image.im_color2.copy()
+                    else: # image is zoomed
+                        Image.image_prezoom = Image.im_color2.copy()
+                        Image.current_image = Image.im_color2.copy()
+                        Image.zoom(Image.x_final_zoom, Image.y_final_zoom)
 
             if tt == ord('d'): 
                 #process wsi and then each label, but diplays labels as they're being processed
